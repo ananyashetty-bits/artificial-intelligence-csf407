@@ -1,0 +1,194 @@
+from collections import deque
+# ---------------------------------------------------------
+# Warehouse Navigation using a Goal-Based Agent
+# Search Algorithm: Breadth-First Search (BFS)
+# ---------------------------------------------------------
+
+
+# Represent the warehouse as a 2D grid.
+# S = Starting position
+# G = Goal position
+# # = Obstacle
+# . = Free space
+
+
+warehouse = [
+    "#####################",
+    "#S....#...........#G#",
+    "#.##....#########...#",
+    "#....##.............#",
+    "#.######.###.#.###..#",
+    "#........#..........#",
+    "#####################"
+]
+
+# Possible movements:
+#        (row change, column change)
+# Up       (-1, 0)
+# Down     ( 1, 0)
+# Left     ( 0,-1)
+# Right    ( 0, 1)
+
+MOVES = [
+    (-1, 0),   # Up
+    (1, 0),    # Down
+    (0, -1),   # Left
+    (0, 1)     # Right
+]
+
+
+def find_position(grid, symbol):
+    """Find and return the (row, column) position of a symbol."""
+    for row in range(len(grid)):
+        for col in range(len(grid[row])):
+            if grid[row][col] == symbol:
+                return (row, col)
+
+
+    return None
+
+def bfs(grid, start, goal):
+    """
+    Perform Breadth-First Search to find a shortest path
+    from start to goal.
+
+
+    Returns:
+        A list of positions representing the path,
+        or None if no path exists.
+    """
+
+
+    # Queue stores positions that need to be explored.
+    queue = deque([start])
+
+
+    # parent keeps track of how each position was reached.
+    # This allows us to reconstruct the final path.
+    parent = {start: None}
+
+
+    while queue:
+        current = queue.popleft()
+
+
+        # If the goal has been reached, stop searching.
+        if current == goal:
+            break
+
+
+        current_row, current_col = current
+
+
+        # Try moving in all four possible directions.
+        for row_change, col_change in MOVES:
+
+
+            new_row = current_row + row_change
+            new_col = current_col + col_change
+
+
+            new_position = (new_row, new_col)
+
+
+            # Check whether the new position is inside the grid.
+            inside_grid = (
+                0 <= new_row < len(grid)
+                and 0 <= new_col < len(grid[0])
+            )
+
+
+            # A position is valid if:
+            # 1. It is inside the grid.
+            # 2. It is not an obstacle.
+            # 3. It has not already been visited.
+            if (
+                inside_grid
+                and grid[new_row][new_col] != "#"
+                and new_position not in parent
+            ):
+                parent[new_position] = current
+                queue.append(new_position)
+
+
+    # If the goal was never visited, no path exists.
+    if goal not in parent:
+        return None
+
+
+    # -----------------------------------------------------
+    # Reconstruct the path by following parent pointers
+    # backwards from the goal to the start.
+    # -----------------------------------------------------
+
+
+    path = []
+    current = goal
+
+
+    while current is not None:
+        path.append(current)
+        current = parent[current]
+
+
+    # The path was constructed backwards, so reverse it.
+    path.reverse()
+
+
+    return path
+
+
+
+
+def display_path(grid, path):
+    """Display the warehouse with the discovered path."""
+
+
+    # Convert each row into a mutable list.
+    result = [list(row) for row in grid]
+
+
+    # Mark the path with '*', while keeping S and G unchanged.
+    for row, col in path:
+        if result[row][col] not in ("S", "G"):
+            result[row][col] = "*"
+
+
+    print("\nWarehouse with discovered path:")
+    for row in result:
+        print("".join(row))
+
+
+
+
+# ---------------------------------------------------------
+# Main program
+# ---------------------------------------------------------
+
+
+start = find_position(warehouse, "S")
+goal = find_position(warehouse, "G")
+
+
+print("Start position:", start)
+print("Goal position:", goal)
+
+
+path = bfs(warehouse, start, goal)
+
+
+if path is None:
+    print("\nNo collision-free path exists from S to G.")
+
+
+else:
+    print("\nPath found!")
+    print("Number of moves:", len(path) - 1)
+
+
+    print("\nPath:")
+    for position in path:
+        print(position)
+
+
+    display_path(warehouse, path)

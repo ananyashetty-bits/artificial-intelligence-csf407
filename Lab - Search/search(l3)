@@ -1,0 +1,141 @@
+import heapq
+import math
+
+warehouse = [
+    "#################",
+    "#S....#.........#",
+    "#.###.#.#######.#",
+    "#...#.#.......#.#",
+    "###.#.#######.#.#",
+    "#...#.........#.#",
+    "#.###########.#.#",
+    "#.............#G#",
+    "#################"
+]
+
+# Find S and G
+def find_positions(grid):
+    start = None
+    goal = None
+
+    for r in range(len(grid)):
+        for c in range(len(grid[0])):
+            if grid[r][c] == 'S':
+                start = (r, c)
+            elif grid[r][c] == 'G':
+                goal = (r, c)
+
+    return start, goal
+
+
+start, goal = find_positions(warehouse)
+
+
+# Manhattan distance heuristic
+def heuristic(state):
+    r, c = state
+    gr, gc = goal
+    return abs(r - gr) + abs(c - gc)
+
+
+# Return valid neighbouring states
+def get_neighbors(state):
+    r, c = state
+
+    moves = [
+        (-1, 0),  # Up
+        (1, 0),   # Down
+        (0, -1),  # Left
+        (0, 1)    # Right
+    ]
+
+    neighbors = []
+
+    for dr, dc in moves:
+        nr = r + dr
+        nc = c + dc
+
+        if (0 <= nr < len(warehouse) and
+                0 <= nc < len(warehouse[0]) and
+                warehouse[nr][nc] != '#'):
+            neighbors.append((nr, nc))
+
+    return neighbors
+
+
+# A* Search
+def astar():
+    frontier = []
+
+    counter = 0
+
+    # (f, counter, state)
+    heapq.heappush(frontier, (heuristic(start), counter, start))
+
+    came_from = {}
+    g_cost = {start: 0}
+
+    visited = set()
+    states_expanded = 0
+
+    while frontier:
+
+        f, _, current = heapq.heappop(frontier)
+
+        if current in visited:
+            continue
+
+        visited.add(current)
+        states_expanded += 1
+
+        # Goal test
+        if current == goal:
+            path = []
+
+            while current != start:
+                path.append(current)
+                current = came_from[current]
+
+            path.append(start)
+            path.reverse()
+
+            return path, states_expanded
+
+        # Expand current state
+        for neighbor in get_neighbors(current):
+
+            new_cost = g_cost[current] + 1
+
+            if neighbor not in g_cost or new_cost < g_cost[neighbor]:
+
+                g_cost[neighbor] = new_cost
+                came_from[neighbor] = current
+
+                h = heuristic(neighbor)
+                f = new_cost + h
+
+                counter += 1
+                heapq.heappush(
+                    frontier,
+                    (f, counter, neighbor)
+                )
+
+    return None, states_expanded
+
+
+# Run A*
+path, states_expanded = astar()
+
+if path is not None:
+    print("Solution found: Yes")
+    print("Path:")
+
+    for state in path:
+        print(state)
+
+    print("Path length:", len(path) - 1)
+    print("States expanded:", states_expanded)
+
+else:
+    print("Solution found: No")
+    print("States expanded:", states_expanded)

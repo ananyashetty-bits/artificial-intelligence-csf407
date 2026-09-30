@@ -1,0 +1,322 @@
+from builtins import frozenset
+from collections import deque
+
+
+class Action:
+    def __init__(self, name, positive_preconditions=None,
+                 negative_preconditions=None,
+                 positive_effects=None, negative_effects=None):
+
+        self.name = name
+        self.positive_preconditions = set(positive_preconditions or [])
+        self.negative_preconditions = set(negative_preconditions or [])
+        self.positive_effects = set(positive_effects or [])
+        self.negative_effects = set(negative_effects or [])
+
+    def is_applicable(self, state):
+        """
+        An action is applicable when:
+        1. All positive preconditions are in the state.
+        2. No negative precondition is in the state.
+        """
+        return (
+            self.positive_preconditions.issubset(state)
+            and self.negative_preconditions.isdisjoint(state)
+        )
+
+    def apply(self, state):
+        """
+        Apply the action to generate a successor state.
+        """
+        new_state = set(state)
+
+        # Remove negative effects
+        new_state -= self.negative_effects
+
+        # Add positive effects
+        new_state |= self.positive_effects
+
+        return frozenset(new_state)
+
+
+def bfs_planner(initial_state, actions, goal):
+    """
+    Breadth-First Search planner.
+
+    Returns:
+        plan: sequence of actions
+        states: states reached after each action
+    """
+
+    initial_state = frozenset(initial_state)
+
+    queue = deque()
+    queue.append((initial_state, [], [initial_state]))
+
+    visited = {initial_state}
+
+    while queue:
+
+        current_state, plan, states = queue.popleft()
+
+        # Check whether goal has been reached
+        if goal.issubset(current_state):
+            return plan, states
+
+        # Explore all applicable actions
+        for action in actions:
+
+            if action.is_applicable(current_state):
+
+                new_state = action.apply(current_state)
+
+                if new_state not in visited:
+
+                    visited.add(new_state)
+
+                    new_plan = plan + [action]
+                    new_states = states + [new_state]
+
+                    queue.append(
+                        (new_state, new_plan, new_states)
+                    )
+
+    return None, None
+
+
+def create_warehouse_actions(include_pickup=True,
+                             include_irrelevant_action=False):
+
+    actions = []
+
+    # -------------------------
+    # Movement actions
+    # -------------------------
+
+    actions.append(
+        Action(
+            "Move(A,B)",
+            positive_preconditions={"At(Robot,A)"},
+            positive_effects={"At(Robot,B)"},
+            negative_effects={"At(Robot,A)"}
+        )
+    )
+
+    actions.append(
+        Action(
+            "Move(B,A)",
+            positive_preconditions={"At(Robot,B)"},
+            positive_effects={"At(Robot,A)"},
+            negative_effects={"At(Robot,B)"}
+        )
+    )
+
+    actions.append(
+        Action(
+            "Move(B,C)",
+            positive_preconditions={"At(Robot,B)"},
+            positive_effects={"At(Robot,C)"},
+            negative_effects={"At(Robot,B)"}
+        )
+    )
+
+    actions.append(
+        Action(
+            "Move(C,B)",
+            positive_preconditions={"At(Robot,C)"},
+            positive_effects={"At(Robot,B)"},
+            negative_effects={"At(Robot,C)"}
+        )
+    )
+
+    # -------------------------
+    # Pick up actions
+    # -------------------------
+
+    if include_pickup:
+
+        for location in ["A", "B", "C"]:
+
+            actions.append(
+                Action(
+                    f"PickUp(Package,{location})",
+
+                    positive_preconditions={
+                        f"At(Robot,{location})",
+                        f"At(Package,{location})"
+                    },
+
+                    negative_preconditions={
+                        "Holding(Package)"
+                    },
+
+                    positive_effects={
+                        "Holding(Package)"
+                    },
+
+                    negative_effects={
+                        f"At(Package,{location})"
+                    }
+                )
+            )
+
+    # -------------------------
+    # Drop actions
+    # -------------------------
+
+    for location in ["A", "B", "C"]:
+
+        actions.append(
+            Action(
+                f"Drop(Package,{location})",
+
+                positive_preconditions={
+                    f"At(Robot,{location})",
+                    "Holding(Package)"
+                },
+
+                positive_effects={
+                    f"At(Package,{location})"
+                },
+
+                negative_effects={
+                    "Holding(Package)"
+                }
+            )
+        )
+
+    # Optional irrelevant action
+    if include_irrelevant_action:
+
+        actions.append(
+            Action(
+                "IdleMove(A,B)",
+
+                positive_preconditions={
+                    "At(Robot,A)"
+                },
+
+                positive_effects={
+                    "At(Robot,B)"
+                },
+
+                negative_effects={
+                    "At(Robot,A)"
+                }
+            )
+        )
+
+    return actions
+
+
+def print_results(plan, states):
+
+    if plan is None:
+        print("No plan found")
+        return
+
+    print("\nPlan found:")
+    for i, action in enumerate(plan, start=1):
+        print(f"{i}. {action.name}")
+
+    print("\nStates reached:")
+
+    for i, state in enumerate(states):
+        print(f"S{i}: {sorted(state)}")
+
+
+def run_test(name, initial_state, actions, goal):
+
+    print("\n" + "=" * 50)
+    print(name)
+    print("=" * 50)
+
+    print("Initial State:")
+    print(sorted(initial_state))
+
+    print("Goal:")
+    print(sorted(goal))
+
+    plan, states = bfs_planner(
+        initial_state,
+        actions,
+        goal
+    )
+
+    print_results(plan, states)
+
+    if plan is not None:
+        print("\nPlan is valid: YES")
+        print("Goal achieved:", goal.issubset(states[-1]))
+    else:
+        print("\nPlan is valid: NO")
+        print("No valid plan exists.")
+
+
+# =====================================================
+# Main Program
+# =====================================================
+
+initial_state = {
+    "At(Robot,A)",
+    "At(Package,A)"
+}
+
+goal = {
+    "At(Package,C)"
+}
+
+
+# -----------------------------------------------------
+# Test A: Solvable Problem
+# -----------------------------------------------------
+
+actions_test_a = create_warehouse_actions()
+
+run_test(
+    "TEST A: Solvable Problem",
+    initial_state,
+    actions_test_a,
+    goal
+)
+
+
+# -----------------------------------------------------
+# Test B: Impossible Problem
+# Remove PickUp action
+# -----------------------------------------------------
+
+actions_test_b = create_warehouse_actions(
+    include_pickup=False
+)
+
+run_test(
+    "TEST B: Impossible Problem",
+    initial_state,
+    actions_test_b,
+    goal
+)
+# -----------------------------------------------------
+# Test C: Irrelevant Action
+# Robot starts at B
+# Package starts at A
+# Planner must find the package and deliver it to C
+# -----------------------------------------------------
+
+initial_state_test_c = {
+    "At(Robot,B)",
+    "At(Package,A)"
+}
+
+goal_test_c = {
+    "At(Package,C)"
+}
+
+actions_test_c = create_warehouse_actions()
+
+run_test(
+    "TEST C: Robot starts away from package",
+    initial_state_test_c,
+    actions_test_c,
+    goal_test_c
+)

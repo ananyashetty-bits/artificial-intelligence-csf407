@@ -1,0 +1,198 @@
+AI LABORATORY - LOGICAL PLANNING
+Domain used: Locked-Door Navigation Problem (instead of the warehouse robot)
+Tasks 1, 2 and 3
+=====================================================================
+
+
+---------------------------------------------------------------------
+PROBLEM SPECIFICATION (needed for all tasks)
+---------------------------------------------------------------------
+Rooms: A, B, C. Passages: A<->B and B<->C only. The B-C passage starts locked.
+The robot starts in A and a key is in A. Goal: reach C.
+Unlocking permanently opens the door. There is no action to drop the key or
+re-lock the door.
+
+Propositions: At(A), At(B), At(C), KeyAt(A), HasKey, Unlocked
+Invariant: exactly one At(.) proposition is true in any reachable state.
+
+Initial state I = {At(A), KeyAt(A)}
+Goal          G = {At(C)}
+
+Actions:
+  Action       Preconditions        Effects
+  Move(A,B)    At(A)                delete At(A); add At(B)
+  Move(B,A)    At(B)                delete At(B); add At(A)
+  PickKey      At(A), KeyAt(A)      delete KeyAt(A); add HasKey
+  Unlock       At(B), HasKey        add Unlocked
+  Move(B,C)    At(B), Unlocked      delete At(B); add At(C)
+  Move(C,B)    At(C), Unlocked      delete At(C); add At(B)
+
+Applicability in the initial state I = {At(A), KeyAt(A)}:
+  - Move(A,B): applicable (At(A) holds).
+  - PickKey: applicable (At(A) and KeyAt(A) hold).
+  - Move(B,A), Unlock, Move(B,C), Move(C,B): NOT applicable (need At(B) or At(C)).
+
+
+=====================================================================
+TASK 1: CONSTRUCT A PLAN BY HAND
+=====================================================================
+Reasoning (working backwards from the goal):
+  - To reach C, we need Move(B,C): requires At(B) and Unlocked.
+  - Unlocked comes only from Unlock: requires At(B) and HasKey.
+  - HasKey comes only from PickKey: requires At(A) and KeyAt(A).
+  - So the key must be picked up in A BEFORE leaving A, then we go to B,
+    unlock, and go to C.
+
+Plan:  PickKey, Move(A,B), Unlock, Move(B,C)      (4 actions)
+
+  State  Facts                              After action
+  S0     At(A), KeyAt(A)                    (initial)
+  S1     At(A), HasKey                      PickKey
+  S2     At(B), HasKey                      Move(A,B)
+  S3     At(B), HasKey, Unlocked            Unlock
+  S4     At(C), HasKey, Unlocked            Move(B,C)
+
+Check: S4 |= {At(C)}, so the goal is satisfied.
+
+Order matters: if the robot did Move(A,B) first, it could never get the key
+(PickKey needs At(A), and the only way back is Move(B,A), which wastes steps).
+Skipping PickKey entirely makes Unlock impossible, hence C unreachable.
+
+
+=====================================================================
+TASK 2: ASK AN LLM TO IMPLEMENT THE PLANNER
+=====================================================================
+LLM used: Claude (Anthropic). The generated program is in
+locked_door_planner.py.
+
+Prompt used (the lab's prompt, with the domain stated precisely):
+
+  "I want to implement a simple planning agent in Python.
+   Represent a state as a set of logical propositions.
+   Each action should contain: a name; positive preconditions; negative
+   preconditions; positive effects; negative effects.
+   An action is applicable if all of its preconditions are satisfied by the
+   current state.
+   When an action is applied: 1. remove its negative effects from the state;
+   2. add its positive effects to the state.
+   Use breadth-first search to find a sequence of actions that achieves a
+   specified goal.
+   The program should also: detect when no plan exists; print the resulting
+   sequence of actions; print the states reached after each action.
+   Explain the implementation and identify any assumptions you make.
+   Run the generated program on this problem: rooms A, B, C; passages A<->B
+   and B<->C; B-C initially locked; propositions At(A), At(B), At(C),
+   KeyAt(A), HasKey, Unlocked; I = {At(A), KeyAt(A)}, G = {At(C)}; actions
+   Move(A,B), Move(B,A), PickKey, Unlock, Move(B,C), Move(C,B) with the
+   preconditions and effects in the table above."
+
+Assumptions made by the program:
+  - States are sets of true propositions (closed-world: anything not in the
+    set is false).
+  - Actions are deterministic, and have unit cost.
+  - Move(B,C) and Move(C,B) require Unlocked as a precondition (this is how the
+    locked door is modelled).
+  - BFS returns a shortest plan (fewest actions).
+
+"Think About It": where each idea appears in the program
+
+  Preconditions -> When is an action applicable?
+      applicable(state, a): returns True if a.pos_pre is a subset of the state
+      and a.neg_pre does not overlap the state (this is S |= Preconditions(a)).
+      bfs_plan only expands an action when applicable() is True.
+
+  Effects -> How does the state change?
+      apply_action(state, a): (state - a.neg_eff) | a.pos_eff, i.e. delete
+      first, then add.
+
+  Goal -> When does planning terminate?
+      goal_satisfied(state, goal): goal is a subset of the state. bfs_plan
+      checks it on each newly generated state and stops, returning the path.
+
+  BFS -> How are alternative plans explored?
+      A FIFO queue (collections.deque) holds the frontier; states are expanded
+      in order of depth, so the first plan found is a shortest one. A dict
+      (parent) records visited states and how each was reached, which prevents
+      loops such as Move(A,B) then Move(B,A) repeating forever.
+
+Which parts were LLM-generated: the whole of locked_door_planner.py was
+generated by the LLM from the specification above (Action class, applicable,
+apply_action, bfs_plan, the validate_plan checker and the test cases).
+Please state this in your submission, and note anything you modify yourself.
+
+
+=====================================================================
+TASK 3: TEST THE GENERATED PLANNER
+=====================================================================
+All results below are the actual output of running locked_door_planner.py.
+
+---- Test A: Solvable problem -------------------------------------------
+  Initial : {At(A), KeyAt(A)}
+  Goal    : {At(C)}
+  Plan found? Yes
+  Plan    : PickKey -> Move(A,B) -> Unlock -> Move(B,C)
+  States  : S0 {At(A), KeyAt(A)}
+            S1 {At(A), HasKey}
+            S2 {At(B), HasKey}
+            S3 {At(B), HasKey, Unlocked}
+            S4 {At(C), HasKey, Unlocked}
+  Valid?  Yes. Every action's preconditions hold in the state where it is
+          executed, and S4 contains At(C). It is also identical to my
+          hand-built plan from Task 1.
+
+---- Test B: Impossible problem -----------------------------------------
+B1: PickKey action removed
+  Initial : {At(A), KeyAt(A)}
+  Goal    : {At(C)}
+  Plan found? No - program prints "No plan found"
+  Why correct: without PickKey, HasKey can never become true, so Unlock can
+  never be applied, so Unlocked is never true, so Move(B,C) is never
+  applicable. The planner does not invent an action.
+
+B2: Key not in room A at the start (I = {At(A)})
+  Goal    : {At(C)}
+  Plan found? No - "No plan found"
+  Why correct: PickKey needs KeyAt(A), which is false, so there is no way to
+  get the key.
+
+---- Test C: Irrelevant actions -----------------------------------------
+C1: Added actions Wave (adds Waved), Spin(A) (adds Dizzy) and Move(A,A) (a
+    no-op loop that deletes and re-adds At(A)).
+  Initial : {At(A), KeyAt(A)}
+  Goal    : {At(C)}
+  Plan found? Yes
+  Plan    : PickKey -> Move(A,B) -> Unlock -> Move(B,C)   (same as Test A)
+  Valid?  Yes. The distractor actions are applicable at times, but they never
+          help achieve At(C), so BFS does not include them, and the plan
+          length is unchanged (4).
+
+C2: Goal changed to {At(B)} (reaching an intermediate room is not the real goal)
+  Initial : {At(A), KeyAt(A)}
+  Goal    : {At(B)}
+  Plan found? Yes
+  Plan    : Move(A,B)    (length 1)
+  Valid?  Yes. The planner stops as soon as the stated goal holds, and it does
+          NOT treat At(B) as At(C). With goal At(C) (Test A) it correctly
+          continues to PickKey, Unlock and Move(B,C).
+
+C3: Unlock action removed (door can never be opened)
+  Initial : {At(A), KeyAt(A)}
+  Goal    : {At(C)}
+  Plan found? No - "No plan found"
+  Why correct: the robot could reach B and hold the key, but with no way to
+  make Unlocked true, Move(B,C) is never applicable. Holding the key alone is
+  not the same as the door being open.
+
+Summary table
+  Test  Initial            Goal    Plan found?  Plan                                 Valid?
+  A     {At(A),KeyAt(A)}   At(C)   Yes          PickKey,Move(A,B),Unlock,Move(B,C)   Yes
+  B1    same (no PickKey)  At(C)   No           -                                    n/a (correctly none)
+  B2    {At(A)}            At(C)   No           -                                    n/a (correctly none)
+  C1    same + 3 extras    At(C)   Yes          same 4-step plan                     Yes
+  C2    {At(A),KeyAt(A)}   At(B)   Yes          Move(A,B)                            Yes
+  C3    same (no Unlock)   At(C)   No           -                                    n/a (correctly none)
+
+Independent verification: validate_plan() re-executes each plan from the
+initial state without using the BFS bookkeeping. It checks the preconditions at
+every step, recomputes each state, checks the "exactly one At(.)" invariant,
+and checks that the final state satisfies the goal. All plans found passed.
